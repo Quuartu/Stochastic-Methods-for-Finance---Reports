@@ -53,27 +53,27 @@
 
 % --- SEZIONE 1: INTRODUZIONE E RACCOLTA DATI ---
 \section{Data Retrieval and Asset Selection}
-To properly analyze portfolio risk, the first decision is choosing the right assets. I selected two major European indices:
+Proper portfolio risk analysis requires the selection of appropriate assets. Two major European indices were selected for this analysis:
 \begin{itemize}
     \item \textbf{DAX 40} (\texttt{.GDAXI}): Germany's primary stock market index.
     \item \textbf{FTSE MIB} (\texttt{.FTMIB}): Italy's main stock exchange index.
 \end{itemize}
 
-I retrieved historical data via \textbf{Refinitiv Workspace}, collecting daily closing prices for both indices over a \textbf{six-month period}. This timeframe gives me enough observations to estimate reliable averages and volatility without including old data that might distort current market conditions.
+Historical data were retrieved via \textbf{Refinitiv Workspace}, comprising daily closing prices for both indices over a \textbf{six-month period}. This timeframe provides a sufficient number of observations to estimate reliable portfolio statistics and volatility estimates while minimizing the influence of outdated information that may no longer reflect current market conditions.
 
 % --- SEZIONE 2: CALCOLI PRELIMINARI E PORTAFOGLIO ---
 \section{Starting with the Basics: An Equi-balanced Portfolio}
 All the initial computations and statistical calculations are in the \texttt{VaR\_Model} worksheet. 
 
 \subsection{Computing Log-Returns}
-First, I converted daily prices into log-returns. I chose these over simple returns because they stack nicely across time—important when scaling risk to different horizons. The formula is straightforward:
+Daily prices were converted into log-returns for all assets. Log-returns are preferred to simple returns due to their mathematically favorable time-aggregation properties, which are particularly important when scaling risk estimates across different time horizons. The log-return is defined as:
 \[ R_{i,t} = \ln\left(\frac{P_{i,t}}{P_{i,t-1}}\right) \]
 
 \subsection{Portfolio Mean and Variance}
-The portfolio is 50-50: $w_{DAX} = 0.5$ and $w_{MIB} = 0.5$. Daily returns follow:
+The portfolio is constructed with equal weights: $w_{DAX} = 0.5$ and $w_{MIB} = 0.5$. Daily portfolio returns are therefore computed as:
 \[ R_{p,t} = w_{DAX} R_{DAX,t} + w_{MIB} R_{MIB,t} \]
 
-Portfolio variance isn't just a weighted average of individual variances—I need to account for how the two indices move together (their covariance):
+Portfolio variance calculations must account for the correlation between the two indices. Beyond a simple weighted average of individual variances, the covariance term captures the joint movement of the assets:
 \[ \sigma_p^2 = w_{DAX}^2 \sigma_{DAX}^2 + w_{MIB}^2 \sigma_{MIB}^2 + 2 w_{DAX} w_{MIB} Cov_{DAX, MIB} \]
 
 \textbf{Implementation Note:} \textit{In the provided Excel file, this theoretical property was put into practice by first computing the daily portfolio log-returns row-by-row in a dedicated column, and then directly applying the \texttt{VAR.S()} and \texttt{AVERAGE()} functions to that entire array. This computational approach implicitly and perfectly captures the covariance effect described in the formula above.}
@@ -96,23 +96,23 @@ These portfolio figures become the foundation for all the risk models that follo
     \label{tab:basestats}
 \end{table}
 
-It is immediately noticeable that the standard portfolio volatility (0.99\%) is strictly lower than the volatility of both individual indices (1.01\% and 1.05\%). This provides an early, purely statistical indication of the diversification benefit at play before even calculating the Value at Risk.
+The standard portfolio volatility (0.99\%) is notably lower than the volatility of either individual index (1.01\% and 1.05\%). This early observation provides empirical evidence of the diversification benefit at work, preceding any formal Value at Risk calculations.
 
 % --- SEZIONE 3: VAR PARAMETRICO E SCALING TEMPORALE (PUNTO 2) ---
 \section{Measuring Risk: Parametric Value at Risk}
 
 \subsection{The Parametric VaR}
-The parametric method assumes returns follow a normal distribution. Given the portfolio mean and volatility, I can calculate the VaR (maximum plausible loss) for one day:
+The parametric method assumes returns follow a normal distribution. Given the portfolio mean and volatility, the Value at Risk (maximum plausible loss) for one day can be computed as:
 \[ VaR_{1\text{-day}}^{1-\alpha} = -\left(\mu_p + z_{\alpha} \cdot \sigma_p\right) \]
 where $z_{\alpha}$ is the critical value from the normal distribution at chosen confidence levels: $95\%$ ($z = -1.645$), $99\%$ ($z = -2.326$), and $99.5\%$ ($z = -2.576$).
 
 \textbf{Implementation Note:} \textit{In the Excel dashboard, the Parametric VaR is dynamically computed using the \texttt{NORM.S.INV()} function to extract the exact $z_{\alpha}$ critical values for the 95\%, 99\%, and 99.5\% probabilities. These values are then multiplied by the portfolio's standard deviation (Sigma) and scaled by the square root of the $T$ horizon specified in the control panel.}
 
 \subsection{Scaling Over Time}
-To assess risk over longer periods, I use the "Square Root of Time" rule. If daily returns are independent (a standard assumption), then volatility grows with $\sqrt{T}$, and so does VaR:
+To assess risk over longer periods, the "Square Root of Time" rule is employed. Under the standard assumption of independent daily returns, volatility and VaR scale with $\sqrt{T}$:
 \[ VaR_{T} = VaR_{1\text{-day}} \cdot \sqrt{T} \]
 
-I computed the VaR for each index individually, their simple sum (ignoring diversification), and the actual portfolio VaR out to 100 days. 
+Value at Risk estimates were computed for each index individually, their unweighted sum (as a hypothetical undiversified benchmark), and the actual portfolio VaR up to a 100-day horizon. 
 
 \textbf{Implementation Note:} \textit{In the Excel \texttt{VaR\_Model} worksheet, this scaling was modeled by creating a sequential timeline from $T=1$ to $T=100$. The baseline 1-day Parametric VaR was anchored using absolute cell references (e.g., \texttt{\$J\$3}) and multiplied by the \texttt{SQRT()} function applied to the respective day index. Dragging this formula down populated the entire dataset required to plot the risk evolution curves.}
 
@@ -143,22 +143,22 @@ The specific values for the 10-day Parametric VaR, which serves as our baseline 
     \label{tab:parametric}
 \end{table}
 
-These results are coherent with the daily volatility: at a 99\% confidence level over a 10-day horizon, the model estimates a maximum expected portfolio loss of 7.24\%.
+These results are consistent with the observed daily volatility statistics. At the 99\% confidence level over a 10-day horizon, the model estimates a maximum portfolio loss of 7.24\%.
 
 % --- SEZIONE 4: MODELLO EWMA (PUNTO 3) ---
 \section{Adapting to Change: The EWMA Model}
-A key limitation of the basic parametric approach is assuming constant volatility. In reality, markets shift: sometimes calm, sometimes turbulent. To capture this \textit{volatility clustering}, I used the \textbf{EWMA} (Exponentially Weighted Moving Average) model.
+A key limitation of the parametric approach is its assumption of constant volatility. In practice, financial markets exhibit \textit{volatility clustering}—periods of relative calm alternating with periods of heightened turbulence. The \textbf{EWMA} (Exponentially Weighted Moving Average) model addresses this limitation.
 
-The idea is simple: weight recent data heavily and older data less. The recursive formula is:
+The EWMA methodology assigns greater weight to recent observations while progressively diminishing the influence of older data. The recursive formula is:
 \[ \sigma_t^2 = \lambda \sigma_{t-1}^2 + (1-\lambda)r_{t-1}^2 \]
-I used $\lambda = 0.94$, the RiskMetrics standard.
+Following the RiskMetrics standard, $\lambda = 0.94$ was employed throughout.
 
-This way, if the market had a big swing yesterday, today's volatility estimate jumps to reflect that reality. Then I apply the same VaR formula, but with this "reactive" volatility:
+This approach ensures that significant market movements are promptly reflected in updated volatility estimates. The same VaR formula is then applied, incorporating this adaptive volatility measure:
 \[ VaR_{EWMA} = -\left(\mu + z_{\alpha} \cdot \sigma_{EWMA}\right) \cdot \sqrt{T} \]
 
 \textbf{Implementation Note:} \textit{In the Excel model, the EWMA volatility was calculated recursively in dedicated columns within the \texttt{VaR\_Model} sheet. Starting from the unconditional historical variance as a seed, the formula iteratively updated the variance day-by-day using the specific daily log-returns. The final, most recent volatility value of this array was then extracted to compute the dynamic EWMA VaR in the Dashboard.}
 
-The result is a risk measure that's far more sensitive to current market conditions. The impact of this reactivity is evident when comparing the 10-day EWMA results (Table \ref{tab:ewma}) to the static Parametric ones.
+The resulting risk measure exhibits substantially greater responsiveness to prevailing market conditions. This dynamism becomes apparent upon comparing the 10-day EWMA results (Table \ref{tab:ewma}) with the static Parametric estimates.
 
 \begin{table}[H]
     \centering
@@ -175,26 +175,26 @@ The result is a risk measure that's far more sensitive to current market conditi
     \label{tab:ewma}
 \end{table}
 
-The EWMA VaR at 99\% for the portfolio is 10.20\%, significantly higher than the 7.24\% estimated by the static Parametric model. This divergence makes perfect sense: it indicates that the most recent market days were more volatile than the 6-month historical average. The EWMA model correctly "catches" this recent turbulence, providing a more conservative and safer risk estimate for current operations.
+The EWMA VaR at 99\% for the portfolio reaches 10.20\%, notably higher than the 7.24\% from the static Parametric model. This divergence reflects a substantive observation: recent trading periods exhibited heightened volatility relative to the 6-month historical mean. The EWMA model appropriately captures this temporal variation, delivering a more conservative risk estimate that reflects current market conditions.
 
 % --- SEZIONE 5: SIMULAZIONE MONTE CARLO (PUNTO 4) ---
 \section{Simulating the Future: Monte Carlo}
-For a more solid estimate, I ran a Monte Carlo simulation. Instead of relying on a single formula, I generate thousands of plausible future scenarios and see how the outcomes are distributed.
+To complement the analytical approaches above, a Monte Carlo simulation framework was developed. Rather than relying on closed-form mathematical expressions, this method generates numerous plausible future scenarios to examine the empirical distribution of portfolio outcomes.
 
-I ran 10,000 iterations to get solid statistics. In each iteration, I generate random returns for the assets (using a normal distribution with historical mean and volatility) and calculate the portfolio return.
+The simulation encompassed 10,000 iterations to ensure robust statistical properties. In each iteration, random returns were generated for both assets from normal distributions parameterized by historical mean and volatility estimates, and the corresponding portfolio return was computed.
 
 The 1-day Monte Carlo VaR is obtained by sorting the 10,000 simulated portfolio returns from worst to best and identifying the value at the $(1-\alpha)$ percentile:
 \[ VaR_{1\text{-day}}^{MC} = -\text{Percentile}\left(\{R_{sim, i}\}_{i=1}^N, 1-\alpha\right) \]
 
 \textbf{Implementation Note:} \textit{In the Excel framework, this stochastic process was executed in the \texttt{VaR\_Model} sheet by generating an array of 10,000 random normal scenarios for both assets using inverse normal transformation functions coupled with random probability generators (e.g., \texttt{NORM.INV(RAND(), ...)}). The portfolio simulated returns were aggregated in a dedicated column, and the VaR was extracted dynamically using the \texttt{PERCENTILE.INC()} function, capturing the exact tail risk from the empirical simulated distribution.}
 
-Then I scale to 10 days using the square root of time:
+The 1-day results are subsequently scaled to a 10-day horizon using the square root of time principle:
 \[ VaR_{T\text{-day}}^{MC} = VaR_{1\text{-day}}^{MC} \cdot \sqrt{10} \]
 
 % [INSERIRE QUI L'IMMAGINE DELL'ISTOGRAMMA MONTE CARLO]
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.5\textwidth]{Picture2.png}
+    \includegraphics[width=0.7\textwidth]{Picture2.png}
     \caption{Distribution of Simulated Portfolio Returns (N = 10,000 iterations).}
     \label{fig:montecarlo}
 \end{figure}
@@ -220,10 +220,10 @@ It is important to note that due to the stochastic nature of the Monte Carlo met
 
 % --- SEZIONE 6: METODO STORICO E SIMULAZIONE STORICA (PUNTI 5 e 6) ---
 \section{Learning from the Past: Historical VaR}
-The historical method is the simplest: I look at actual past data without assuming any particular distribution. The past simply tells me what risk to expect.
+The Historical method represents the most straightforward approach, relying on empirical data without imposing distributional assumptions. This non-parametric technique allows observed historical outcomes to directly inform risk assessment.
 
 \subsection{1-Day Historical VaR}
-I sort the actual historical returns (last six months) from worst to best. The VaR is the value at the $(1-\alpha)$ percentile of these real data:
+Actual historical returns across the six-month sample period are sorted from worst to best performance. The Value at Risk is then determined as the value at the $(1-\alpha)$ percentile of this empirical distribution:
 \[ VaR_{1\text{-day}}^{Hist} = -\text{Percentile}\left(\{R_{historical}\}, 1-\alpha\right) \]
 
 \subsection{T-Day Historical VaR}
@@ -248,7 +248,7 @@ Table \ref{tab:historical} summarizes both the 1-day Historical VaR and its 10-d
     \label{tab:historical}
 \end{table}
 
-Interestingly, the 10-day Historical Simulation VaR for the portfolio at 99\% (8.02\%) is higher than the Parametric one (7.24\%). This discrepancy highlights the main strength of the historical approach: it does not assume a perfect bell curve and therefore natively captures "fat tails" (extreme market events that occurred in the last six months), which the normal distribution tends to underestimate.
+Notably, the 10-day Historical Simulation VaR for the portfolio at 99\% (8.02\%) exceeds the Parametric estimate (7.24\%). This difference underscores a fundamental advantage of the historical methodology: it does not impose a normal distribution assumption and thereby naturally incorporates "fat tails" (the empirically observed frequency of extreme events over the past six months), a phenomenon that parametric approaches tend to underestimate.
 
 % --- SEZIONE 7: VERIFICA DELLA SUBADDITIVITÀ (PUNTO 7) ---
 \section{Testing the Value of Diversification}
@@ -257,7 +257,7 @@ A key property of a good risk measure is \textbf{subadditivity}: the risk of a d
 
 I tested this across all four models (Parametric, EWMA, Monte Carlo, and Historical) at the $99\%$ confidence level for 10 days. In every case, the actual portfolio VaR is lower than the simple weighted sum of individual index risks.
 
-To definitively prove this, I extracted the 99\% VaR at 10 days across all four methodologies and compared the actual Portfolio VaR against the simple weighted sum of the components (Table \ref{tab:subadditivity}).
+To validate this property empirically, the 99\% VaR at 10 days was computed across all four methodologies and the actual Portfolio VaR was compared against the simple weighted sum of component risks (Table \ref{tab:subadditivity}).
 
 \textbf{Implementation Note:} \textit{In the final Dashboard, this theoretical axiom is tested dynamically using an \texttt{IF()} logical statement. The spreadsheet calculates the linear weighted sum of the standalone VaRs and compares it to the portfolio VaR. The condition \texttt{IF(Actual < Weighted, "YES", "NO")} strictly validates the presence of the diversification benefit. Conditional formatting is applied to the output cells to provide immediate visual confirmation of the subadditivity.}
 
