@@ -1,15 +1,9 @@
 Notes/
-
-# --- SISTEMA OPERATIVO ---
 .DS_Store
 .AppleDouble
 .LSOverride
 Thumbs.db
-
-# --- EDITOR (VS Code) ---
 .vscode/
-
-# --- LATEX (File ausiliari inutili su GitHub) ---
 *.aux
 *.fdb_latexmk
 *.fls
@@ -20,10 +14,6 @@ Thumbs.db
 *.pdfsync
 *.blg
 *.bbl
-
-# --- OFFICE & TEMPORANEI ---
 ~$*
 *.tmp
-
-# --- ARCHIVI (Se non vuoi caricare gli .zip) ---
 *.zip
