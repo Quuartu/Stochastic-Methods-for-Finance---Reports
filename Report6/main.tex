@@ -1,0 +1,247 @@
+\documentclass{report}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\geometry{a4paper, margin=0.8in}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{calc, decorations.pathreplacing}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\tcbuselibrary{theorems}
+\usepackage{eurosym}
+\usepackage{fancyhdr}
+\usepackage{booktabs}
+\usepackage{listings}
+
+\lstdefinestyle{tcblatex}{
+    language=[Visual]Basic,
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\bfseries,
+    commentstyle=\itshape,
+    stringstyle=\ttfamily,
+    showstringspaces=false,
+    breaklines=true,
+    columns=fullflexible
+}
+
+\begin{document}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Report 6 \;|\; Stochastic Methods for Finance \;|\; \thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\headheight}{14pt}
+\thispagestyle{plain} 
+
+% --- PROFESSIONAL HEADER ---
+\begin{flushleft}
+    {\large \textbf{Stochastic Methods for Finance - Report 6}} \\
+    \rule{\textwidth}{0.4pt} \\ 
+    \textbf{Analyst:} Davide Quartucci \hfill \textbf{Date:} April 20, 2026 \\
+    \textbf{Underlying Basket:} Deutsche Lufthansa AG \;|\; Air France KLM SA \;|\; Ryanair Holdings PLC \\
+\end{flushleft}
+
+\begin{center}
+    \fcolorbox{black}{gray!10}{
+        \begin{minipage}{0.95\textwidth}
+            \small \textit{Computational architecture and numerical routines are available in the supplementary file:} \texttt{Report6\_Quartucci\_Davide.xlsm}
+        \end{minipage}
+    }
+\end{center}
+
+\section{Environment Setup and Baseline Parameters}
+The primary objective of this framework is to establish a robust computational environment for stochastic option pricing. The architecture integrates Microsoft Excel's front-end capabilities with a custom-built Visual Basic for Applications (VBA) Monte Carlo engine.
+
+\subsection{Parameter Initialization}
+The baseline parameters for the Black-Scholes framework are standardized as follows:
+\begin{itemize}
+    \item Spot price: $S_0 = 100$
+    \item Annualized volatility: $\sigma = 20\%$
+    \item Risk-free rate: $r = 1\%$
+    \item Time to maturity: $T = 1$ year
+    \item Strike price: $K = 99$
+\end{itemize}
+Time discretization is set to $dt = 1/252$, accurately reflecting the effective trading days within a standard financial year.
+
+\subsection{Stochastic Driver Generation}
+Due to the absence of a native normal distribution generator in VBA, the \textbf{Box-Muller} transform was implemented. This algorithm efficiently maps pairs of independent uniformly distributed variables (generated via \texttt{Rnd()}) into standard normal variables $\mathcal{N}(0,1)$, which serve as the fundamental Brownian increments for the simulations.
+
+\section{Computational Architecture and Implementation Methodology}
+A critical aspect of this project is the design of the computational infrastructure. The model was engineered to maximize execution speed, maintainability, and clarity, adopting a hybrid approach between spreadsheet functions and object-oriented programming.
+
+\subsection{Excel-VBA Integration Strategy}
+The architecture deliberately separates static historical calibration from dynamic stochastic simulation to optimize computational resources:
+\begin{itemize}
+    \item \textbf{Data Processing (Front-End):} The extraction of historical prices, the computation of daily logarithmic returns, and the estimation of annualized volatilities and correlation matrices ($\rho$) were performed natively in Excel. Utilizing built-in array functions (e.g., \texttt{STDEV.S}, \texttt{CORREL}) provides immediate inspectability of the market inputs without running external scripts.
+    \item \textbf{Stochastic Engine (Back-End):} The Monte Carlo simulations, which require heavy iterative loops and memory allocation, were exclusively coded in VBA. The macros read the calibrated inputs directly from specific cell coordinates, ensuring a seamless data pipeline.
+\end{itemize}
+
+\subsection{Algorithmic Optimization and Modularity}
+To achieve institutional-grade performance during the simulation of $N=10{,}000$ paths, several optimization techniques were implemented within the VBA environment:
+\begin{enumerate}
+    \item \textbf{Pre-computation of Constants:} Variables that remain constant across the time steps—such as the deterministic drift $(r - 0.5\sigma^2)dt$ and the diffusion scalar $\sigma\sqrt{dt}$—were strictly calculated outside the main Monte Carlo loops.
+    \item \textbf{Code Modularity:} The pricing engine was structured into independent, self-contained subroutines (Macros) for each derivative class (Vanilla, Asian, Lookback, Worst-Of). This modular design prevents variable cross-contamination and allows discrete execution and debugging for each specific payoff structure.
+\end{enumerate}
+
+\subsection{Cholesky Factorization Design}
+For the multi-asset framework, the Cholesky decomposition of the $3 \times 3$ correlation matrix was explicitly hardcoded using fundamental algebraic equations rather than employing a generic $n \times n$ iterative loop. This choice drastically reduces the algorithmic complexity and execution time for low-dimensional matrices, guaranteeing the instantaneous generation of the lower triangular matrix $L$ required for the correlated shocks.
+
+
+\section{Geometric Brownian Motion (GBM) Dynamics}
+This section evaluates the engine's capability to project the underlying asset's trajectory over time.
+
+\subsection{Model Specification}
+The asset price dynamics follow a Geometric Brownian Motion. To guarantee strictly positive sample paths and eliminate discretization bias, the closed-form exact solution of the Stochastic Differential Equation (SDE) is utilized:
+\begin{equation}
+    S_{t+dt} = S_t \exp\left[\left(r - \frac{1}{2}\sigma^2\right)dt + \sigma \sqrt{dt} Z\right]
+\end{equation}
+
+\subsection{Simulation Output}
+Executing $N=100$ independent paths over 252 discrete steps yields a distribution spectrum that materializes market uncertainty.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{Picture1.png}
+    \caption{Monte Carlo projection of 100 GBM paths ($S_0=100, \sigma=20\%, r=1\%, T=1$).}
+    \label{fig:gbm}
+\end{figure}
+
+The graphical output (Figure \ref{fig:gbm}) confirms that the terminal price dispersion is structurally consistent with the $20\%$ volatility input, bounding the majority of terminal states within the $[60, 150]$ interval.
+
+\section{Vanilla Derivatives Valuation}
+This section validates the numerical accuracy of the Monte Carlo engine by pricing European Call and Put options against the Black-Scholes closed-form benchmark.
+
+\subsection{Numerical Schemes}
+Three distinct computational approaches were implemented:
+\begin{enumerate}
+    \item \textbf{1-Step Method:} Leverages the path-independence of European payoffs by executing a single stochastic jump to maturity $T$.
+    \item \textbf{Euler-Maruyama Multi-Step:} Discretizes the path into 252 steps via $S_{t+dt} = S_t(1 + r dt + \sigma \sqrt{dt} Z)$. It introduces a known truncation error of order $\mathcal{O}(dt)$.
+    \item \textbf{Exact Multi-Step:} Iteratively applies the exact GBM log-normal solution across 252 steps, nullifying local discretization bias.
+\end{enumerate}
+
+\subsection{Empirical Convergence}
+Based on $N=10{,}000$ iterations, the pricing outcomes demonstrate robust convergence toward the analytical benchmark.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lcccccc}
+        \toprule
+        & \multicolumn{3}{c}{\textbf{Call}} & \multicolumn{3}{c}{\textbf{Put}} \\
+        \cmidrule(lr){2-4} \cmidrule(lr){5-7}
+        \textbf{Method} & \textbf{MC Price} & \textbf{SE} & \textbf{Abs Error} & \textbf{MC Price} & \textbf{SE} & \textbf{Abs Error} \\
+        \midrule
+        1-Step (Closed Form) & 8.943 & 0.137 & 0.024 & 6.906 & 0.096 & 0.026 \\
+        Euler Multi-Step & 9.066 & 0.139 & 0.147 & 6.951 & 0.097 & 0.018 \\
+        Exact Multi-Step & 8.763 & 0.137 & 0.155 & 7.052 & 0.097 & 0.119 \\
+        \midrule
+        \textbf{Black \& Scholes} & \textbf{8.918} & - & - & \textbf{6.933} & - & - \\
+        \bottomrule
+    \end{tabular}
+    \caption{Comparative pricing summary for European Vanilla Options ($N=10{,}000$).}
+    \label{tab:vanilla_comparison}
+\end{table}
+
+The analytical evidence suggests that for path-independent payoffs, the 1-Step approach is computationally dominant: it achieves benchmark-level accuracy while drastically minimizing processing overhead. Multi-step schemes remain mandatory solely for path-dependent structures.
+
+\section{Path-Dependent Structures: Asian and Lookback Options}
+Expanding the framework's complexity, this section evaluates exotic derivatives characterized by strong path-dependency.
+
+\subsection{Asian Options (Arithmetic Mean)}
+The payoff is determined by the arithmetic average of the underlying's daily closing prices. 
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lcccc}
+        \toprule
+        \textbf{Derivative} & \textbf{MC Price} & \textbf{MC Std Deviation} & \textbf{MC Std Error} \\
+        \midrule
+        Asian Call & 5.348 & 7.836 & 0.078 \\
+        Asian Put & 3.860 & 5.701 & 0.057 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Pricing output for Arithmetic Asian Options ($N=10{,}000$).}
+    \label{tab:asian}
+\end{table}
+
+The pricing metrics (Table \ref{tab:asian}) quantify the \textit{variance reduction} phenomenon inherent in Asian options. The averaging mechanism dampens volatility spikes, structurally depressing the derivative's fair value compared to its Vanilla equivalent.
+
+\subsection{Lookback Options (Floating Strike)}
+Lookback options grant the holder the right to exercise at the most favorable price achieved during the life of the option. The algorithmic implementation tracks the running extrema ($\max(S_t)$ and $\min(S_t)$) at each discrete step.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lcccc}
+        \toprule
+        \textbf{Derivative} & \textbf{MC Price} & \textbf{MC Std Deviation} & \textbf{MC Std Error} \\
+        \midrule
+        Lookback Call (Max - $S_T$) & 15.429 & 10.672 & 0.106 \\
+        Lookback Put ($S_T$ - Min) & 14.977 & 13.805 & 0.138 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Pricing output for Floating Strike Lookback Options ($N=10{,}000$).}
+    \label{tab:lookback}
+\end{table}
+
+As illustrated in Table \ref{tab:lookback}, the embedded \textit{hindsight} optionality carries a substantial premium, making Lookback structures significantly more expensive than standard derivatives.
+
+\section{Multi-Asset Pricing: The Worst-Of Certificate}
+The final model transitions from a unidimensional SDE to a multidimensional framework to price a structured \textit{Worst-Of} product on an equity basket.
+
+\subsection{Market Calibration and Correlation Matrix}
+A sector-specific basket comprising three European airlines (Lufthansa, Air France, Ryanair) was analyzed. Based on a 252-day historical rolling window, the annualized volatilities and the empirical correlation matrix of logarithmic returns were extracted.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lccc}
+        \toprule
+        \textbf{Asset} & \textbf{LHAG.DE} & \textbf{AIRF.PA} & \textbf{RYA.I} \\
+        \midrule
+        \textbf{LHAG.DE (Vol: 37.25\%)} & 1.0000 & 0.4565 & 0.4791 \\
+        \textbf{AIRF.PA (Vol: 50.62\%)} & 0.4565 & 1.0000 & 0.5279 \\
+        \textbf{RYA.I (Vol: 30.31\%)}   & 0.4791 & 0.5279 & 1.0000 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Empirical Correlation Matrix ($\rho$) and Annualized Volatilities.}
+    \label{tab:correlation}
+\end{table}
+
+\subsection{Dependence Modeling via Cholesky Decomposition}
+To bypass the assumption of independence, the correlation matrix $\rho$ was factorized using the Cholesky decomposition algorithm, yielding a lower triangular matrix $L$. At each increment, multiplying $L$ by a vector of standard independent normals generates the cross-sectionally correlated stochastic shocks driving the multidimensional simulation.
+
+\subsection{Derivative Valuation and Risk Interpretation}
+The priced instrument is a \textit{Worst-Of Bonus Certificate} featuring a European barrier at 60\% of the initial spot prices and a 5\% fixed premium conditional on barrier integrity. 
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lc}
+        \toprule
+        \textbf{Parameter} & \textbf{Value} \\
+        \midrule
+        Nominal Value & \euro{100} \\
+        Barrier Level & 60\% \\
+        \midrule
+        \textbf{Fair Value (Price)} & \textbf{\euro{87.00}} \\
+        MC Std Deviation & 26.56 \\
+        MC Std Error & 0.265 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Valuation metrics for the Worst-Of Bonus Certificate ($N=10{,}000$).}
+    \label{tab:worstof}
+\end{table}
+
+The resulting Fair Value of \euro{87.00} (Table \ref{tab:worstof}) rigorously prices the combined risk factors. The extreme historical volatility of the underlying assets (e.g., Air France at $>50\%$), coupled with the severe multiplicative risk inherent in the "Worst-Of" payout structure, generates a high statistical probability of a \textit{Knock-In} event. The positive correlation ($\approx 0.50$) provides only marginal mitigation, ultimately justifying the significant discount against the nominal value.
+
+\section{Conclusion and Executive Summary}
+The development and execution of this quantitative framework successfully demonstrated the flexibility and numerical stability of Monte Carlo methods in pricing diverse financial derivatives. 
+
+The empirical results confirm several key theoretical principles:
+\begin{itemize}
+    \item \textbf{Computational Efficiency:} For path-independent structures (European Vanillas), the 1-Step closed-form solution is computationally superior, avoiding unnecessary loops without sacrificing accuracy. Euler and Exact multi-step schemes become strictly necessary only when dealing with path-dependent payoffs.
+    \item \textbf{Exotic Premia:} Path-dependency fundamentally alters the risk profile of a derivative. Averaging mechanisms (Asian options) depress the option's value via variance reduction, whereas extreme-value tracking (Lookback options) commands a significant premium due to hindsight optionality.
+    \item \textbf{Multidimensional Risk:} Transitioning from single-asset to multi-asset pricing requires robust correlation modeling. The implementation of the Cholesky factorization effectively captured the dependence structure of the aviation basket. The valuation of the Worst-Of Certificate highlighted how extreme idiosyncratic volatility and structural "Worst-Of" conditions drastically discount the derivative's fair value, pricing in a high probability of barrier breach.
+\end{itemize}
+Overall, the VBA-Excel integrated engine proved to be a reliable and highly optimized infrastructure for stochastic derivative pricing.
+\end{document}
