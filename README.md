@@ -11,7 +11,9 @@ The main directory is organized into numbered subfolders, each containing a spec
 * **Report3/Report3_Quartucci_Davide.pdf** 
 * **Report4/Report4_Quartucci_Davide.pdf**
 * **Report5/Report5_Quartucci_Davide.pdf**
-* *...additional reports will be added sequentially.*
+* **Report6/Report6_Quartucci_Davide.pdf**
+* **Report7/Report7_Quartucci_Davide.pdf**
+* **Report8/Report8_Quartucci_Davide.pdf**
 
 > [!NOTE]
 > The local `Notes` folder is intentionally excluded from this repository via `.gitignore` as it contains private working notes and rough drafts.
