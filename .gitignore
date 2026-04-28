@@ -1,4 +1,7 @@
-Notes/
+.gitignore
+*
+!Notes/
+!Notes/Notes.pdf
 .DS_Store
 .AppleDouble
 .LSOverride
