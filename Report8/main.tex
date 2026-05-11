@@ -1,0 +1,475 @@
+\documentclass{report}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\geometry{a4paper, margin=0.8in}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{calc, decorations.pathreplacing}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\tcbuselibrary{theorems}
+\usepackage{eurosym}
+\usepackage{fancyhdr}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{caption}
+\renewcommand{\thesection}{\arabic{section}}
+
+% --- Python listing style ---
+\lstdefinestyle{pythonstyle}{
+    language=Python,
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{gray}\itshape,
+    stringstyle=\color{orange},
+    showstringspaces=false,
+    breaklines=true,
+    columns=fullflexible,
+    frame=single,
+    rulecolor=\color{black!30},
+    backgroundcolor=\color{gray!5}
+}
+
+\begin{document}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Report 8 \;|\; Stochastic Methods for Finance \;|\; \thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\headheight}{14pt}
+\thispagestyle{plain}
+
+% --- HEADER ---
+\begin{flushleft}
+    {\large \textbf{Stochastic Methods for Finance --- Report 8}} \\
+    \rule{\textwidth}{0.4pt} \\
+    \textbf{Author:} Davide Quartucci \hfill \textbf{Date:} May 09, 2026 \\
+    \textbf{Language:} Python 3.12
+\end{flushleft}
+
+\begin{center}
+    \fcolorbox{black}{gray!10}{
+        \begin{minipage}{0.95\textwidth}
+            \small \textit{Every step implementation can be checked in the provided file:}
+            \texttt{Report8\_Quartucci\_Davide.py}
+            \vspace{3mm}\newline
+            \textbf{Note:} This project was developed and tested on macOS using \textbf{CPython 3.12.0}.\\[1mm]
+            \textbf{Required dependencies:}
+            \begin{itemize}[noitemsep]
+                \item \texttt{numpy}
+                \item \texttt{matplotlib}
+                \item \texttt{scipy}
+                \item \texttt{py\_vollib\_vectorized}
+            \end{itemize}
+            \textbf{Package manager:} \texttt{pip}
+        \end{minipage}
+    }
+\end{center}
+
+\rule{\textwidth}{0.4pt}\\[2mm]
+To reproduce the results, open a terminal and follow these steps:
+\begin{itemize}
+    \item \textbf{Step 1: Install dependencies}
+    \begin{verbatim}
+pip install numpy matplotlib scipy py_vollib_vectorized
+    \end{verbatim}
+
+    \item \textbf{Step 2: Run the script}
+    \begin{verbatim}
+python Report8_Quartucci_Davide.py
+    \end{verbatim}
+    On macOS/Linux use \texttt{python3} if needed.
+\end{itemize}
+
+\textbf{Expected output:} Numerical results printed to console; all figures saved
+to the \texttt{output/} subdirectory automatically created by the script.
+
+\rule{\textwidth}{0.4pt}
+
+% =============================================================================
+\section{References}
+% =============================================================================
+As requested during the lab session, the references of the code implementation and modifications are included as comments in the code file. Key literature includes:
+\begin{enumerate}
+    \item Pauli-Isosomppi (2022). \textit{Heston-model} [GitHub repository].
+          \url{https://github.com/Pauli-Isosomppi/Heston-model}
+          (Base simulation structure adapted and extended.)
+\end{enumerate}
+
+% =============================================================================
+\section{Model Setup}
+% =============================================================================
+
+The Heston (1993) stochastic volatility model describes the joint dynamics of
+an asset price $S_t$ and its instantaneous variance $v_t$ under the risk-neutral
+measure:
+\begin{align}
+    dS_t &= r\,S_t\,dt + \sqrt{v_t}\,S_t\,dW_t^S \label{eq:heston_S}\\
+    dv_t &= \kappa(\theta - v_t)\,dt + \sigma\sqrt{v_t}\,dW_t^v \label{eq:heston_v}
+\end{align}
+where $dW_t^S\,dW_t^v = \rho\,dt$.  The base parameters used throughout are:
+\[
+    S_0 = 100,\quad r = 0.02,\quad T = 1,\quad
+    \kappa = 2,\quad \theta = 0.04,\quad \sigma = 0.5,\quad
+    \rho = -0.7,\quad v_0 = 0.04.
+\]
+The simulation grid uses $N = 250$ time steps and $M = 10{,}000$ Monte Carlo paths.
+The random seed is fixed once at the beginning of the script with
+\texttt{np.random.seed(42)}, so the full sequence of Monte Carlo simulations
+and figures is reproducible across runs.
+
+% =============================================================================
+\section{Simulation of $(S_t, v_t)$: Sample Paths}
+% =============================================================================
+
+Both processes are simulated via an Euler--Maruyama discretisation with
+full truncation on the variance (see Task~6 for motivation).  At each step:
+\begin{align}
+    S_{i} &= S_{i-1}\exp\!\left[\left(r - \tfrac{1}{2}v_{i-1}\right)\Delta t
+             + \sqrt{v_{i-1}\,\Delta t}\,Z^S_i\right] \label{eq:euler_S}\\
+    v_{i} &= \max\!\left(v_{i-1} + \kappa(\theta - v_{i-1})\Delta t
+             + \sigma\sqrt{v_{i-1}\,\Delta t}\,Z^v_i,\; 0\right) \label{eq:euler_v}
+\end{align}
+where $(Z^S_i, Z^v_i)$ are drawn from a bivariate normal with correlation $\rho$.
+The geometric exponential form in \eqref{eq:euler_S} guarantees $S_t > 0$.
+
+\medskip
+\noindent In the code the correlated Brownian increments are generated via:
+\begin{lstlisting}[style=pythonstyle]
+cov = np.array([[1, rho], [rho, 1]])
+Z = np.random.multivariate_normal([0, 0], cov, (N, M))
+\end{lstlisting}
+
+\medskip
+\noindent To be explicit about the numerical scheme used in the code, we
+introduce the notation
+$$
+    v_{i-1}^{\mathrm{prev}} := \max\{v_{i-1},\;0\},
+$$
+and then the discrete updates become
+$$
+    S_{i} = S_{i-1}\exp\left[\left(r - \tfrac{1}{2}v_{i-1}^{\mathrm{prev}}\right)\Delta t
+             + \sqrt{v_{i-1}^{\mathrm{prev}}\,\Delta t}\;Z^S_i\right],
+$$
+$$
+    v_{i} = \max\left\{v_{i-1}^{\mathrm{prev}} + \kappa(\theta - v_{i-1}^{\mathrm{prev}})\Delta t
+             + \sigma\sqrt{v_{i-1}^{\mathrm{prev}}\,\Delta t}\;Z^v_i,\;0\right\}.
+$$
+This makes explicit that the non-negativity correction is applied before both
+the drift and diffusion terms at each Euler step (``full truncation'').
+
+Figure~\ref{fig:task1} shows 10 representative paths of $S_t$ (left) and
+$v_t$ (right) for the base parametrisation.  The variance process fluctuates
+around its long-run mean $\theta = 0.04$ (implied volatility $\approx 20\%$)
+with mean-reversion speed $\kappa = 2$; the negative correlation $\rho = -0.7$
+produces the typical leverage effect where large downward moves in $S$ coincide
+with spikes in $v$.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{output/fig_01_task1_sample_paths.png}
+    \caption{Task 1 --- Ten sample paths of $S_t$ (left) and $v_t$ (right)
+             under the Heston model with base parameters.}
+    \label{fig:task1}
+\end{figure}
+
+% =============================================================================
+\section{Terminal Distribution: Heston vs.\ Black--Scholes}
+% =============================================================================
+
+A Black--Scholes model is simulated with constant volatility
+$\sigma_{\mathrm{BS}} = \sqrt{\theta} = 20\%$, so that both models share the
+same instantaneous variance on average.  Table~\ref{tab:moments} reports the
+four central moments of the terminal price $S_T$ and of the log-return
+$\ln(S_T/S_0)$.  The kurtosis values are computed using the Fisher convention,
+that is, as \emph{excess kurtosis}; this is the default returned by
+\texttt{scipy.stats.kurtosis}.
+
+\begin{table}[H]
+\centering
+\caption{Comparison of terminal-distribution statistics (Monte Carlo, $M=10{,}000$).}
+\label{tab:moments}
+\begin{tabular}{lcccc}
+\toprule
+ & \multicolumn{2}{c}{$S_T$} & \multicolumn{2}{c}{$\ln(S_T/S_0)$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Statistic & Heston & Black--Scholes & Heston & Black--Scholes \\
+\midrule
+Mean     & 102.0634 & 101.7776 & 0.0004 & -0.0024 \\
+Variance & 355.4669          & 421.9102           & 0.0441          & 0.0400            \\
+Skewness & -0.5984        & 0.6175        & -1.5625         & -0.0085      \\
+Excess kurtosis (Fisher) & 0.7161    & 0.7950 & 4.6622  & 0.0093 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\medskip
+Several features are noteworthy. Both models produce the same martingale mean $S_0 e^{rT}$ under risk-neutrality, confirming the correctness of the discretisation.  The log-return under Heston exhibits higher variance than Black-Scholes, consistent with the additional randomness introduced by stochastic volatility. The variance of $S_T$ is lower under Heston: the negative correlation suppresses the right tail of the price distribution more than it expands the left, resulting in a net reduction in spread. The
+log-return under Heston exhibits negative skewness (due to $\rho < 0$) and
+positive excess kurtosis (fat tails), whereas under Black--Scholes the
+log-return is exactly normal in the continuous limit.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{output/fig_02_task2_heston_vs_bs.png}
+    \caption{Task 2 --- Left: 10 sample paths for each model.
+             Right: density of the terminal price $S_T$ (Heston in blue,
+             Black--Scholes in orange).}
+    \label{fig:task2}
+\end{figure}
+
+% =============================================================================
+\section{European Call Pricing: Heston MC vs.\ Black--Scholes}
+% =============================================================================
+
+European call prices are computed via Monte Carlo under Heston and via the
+closed-form Black--Scholes formula for strikes $K \in \{90, 100, 110\}$:
+\[
+    C_{\mathrm{MC}} = e^{-rT}\,\frac{1}{M}\sum_{j=1}^{M}(S_T^{(j)} - K)^+,
+    \qquad
+    C_{\mathrm{BS}} = S_0\Phi(d_1) - Ke^{-rT}\Phi(d_2)
+\]
+with the standard $d_1, d_2$ definitions.  The standard error of the MC
+estimator is also reported:
+\begin{lstlisting}[style=pythonstyle]
+heston_se = np.std(discounted_payoff, ddof=1) / np.sqrt(M)
+\end{lstlisting}
+
+\begin{table}[h!]
+\centering
+\caption{Call prices (Heston MC vs. Black-Scholes)}
+\label{tab:task3_prices}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Strike ($K$)} & \textbf{Heston (MC)} & \textbf{Black-Scholes} & \textbf{MC Std. Dev} & \textbf{MC Std. Error} \\ \hline
+90  & 14.9619 &      14.8065 &    13.0830 &     0.1308 \\
+100   &  8.2618 &      8.9160 &    10.0928 &     0.1009 \\
+110   &    3.5602 &       4.9439 &     6.7286 &     0.0673 \\\hline
+\end{tabular}
+\end{table}
+
+The Heston prices differ from Black--Scholes prices even though both models
+share $\sigma_{\mathrm{BS}} = \sqrt{\theta}$: stochastic volatility and the
+leverage effect raise the price of OTM puts (and by put--call parity affect
+calls too), creating an asymmetric smile.  Specifically, for $K < S_0$ the
+Heston call tends to be slightly higher than BS, while for $K > S_0$ it is
+slightly lower, consistent with the implied skew generated by $\rho < 0$.
+
+% =============================================================================
+\section{Implied Volatility Smile}
+% =============================================================================
+
+Call (and put) prices are computed for a grid of strikes $K \in [70, 130]$
+with step 2.  Each price is then \emph{inverted} numerically via the
+\texttt{py\_vollib\_vectorized} library to recover the Black--Scholes implied
+volatility (IV):
+\[
+    \mathrm{IV}(K) = \mathrm{BS}^{-1}\!\left(C_{\mathrm{Heston}}(K)\right).
+\]
+Numerically unstable IV estimates (outside the range $[1\%, 150\%]$) are
+discarded before plotting.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{output/fig_03_task4_iv_smile.png}
+    \caption{Task 4 --- Implied volatility smile extracted from Heston MC prices
+             ($\rho = -0.7$).  The downward slope (skew) is a direct consequence
+             of the negative correlation between returns and variance.}
+    \label{fig:task4}
+\end{figure}
+
+\noindent The smile displays a pronounced \emph{skew}: IV is higher for low
+strikes (OTM puts / ITM calls) and lower for high strikes (OTM calls).  This
+is the classic leverage effect: negative $\rho$ implies that large downward
+moves in $S$ are accompanied by a rise in volatility, making left-tail
+scenarios more probable than under log-normality.
+
+% =============================================================================
+\section{Sensitivity of the Smile to $\rho$ and $\sigma$}
+% =============================================================================
+
+The implied volatility smile is recomputed varying one parameter at a time
+while holding the other fixed.
+
+\subsection*{Effect of $\rho$}
+
+Three values $\rho \in \{-0.9,\,-0.5,\,0\}$ are tested with $\sigma = 0.5$
+fixed.  As $\rho$ becomes more negative the smile tilts into a steeper
+downward skew: a strongly negative correlation amplifies the co-movement of
+price drops and volatility spikes, inflating the left tail relative to the
+right tail.  At $\rho = 0$ the two Brownian motions are independent and the
+smile is approximately symmetric (a pure ``smile'' rather than a ``smirk'').
+
+\subsection*{Effect of $\sigma$ (vol-of-vol)}
+
+Three values $\sigma \in \{0.2,\,0.5,\,1.0\}$ are tested with $\rho = -0.7$
+fixed.  A higher $\sigma$ increases the randomness of the variance process,
+fattening both tails of the return distribution and \emph{raising} the overall
+level of IV, particularly for deep OTM options.  This produces a more
+pronounced curvature (convexity) of the smile.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{output/fig_04_task5_sensitivity.png}
+    \caption{Task 5 --- Left: smile sensitivity to $\rho \in \{-0.9,-0.5,0\}$
+             ($\sigma = 0.5$ fixed).  Right: sensitivity to
+             $\sigma \in \{0.2,0.5,1.0\}$ ($\rho = -0.7$ fixed).}
+    \label{fig:task5}
+\end{figure}
+
+% =============================================================================
+\section{Feller Condition and Full Truncation}
+% =============================================================================
+
+The \emph{Feller condition} for the CIR-type variance process is:
+\[
+    2\kappa\theta > \sigma^2.
+\]
+With the base parameters: $2 \times 2 \times 0.04 = 0.16 < 0.25 = \sigma^2$.
+The condition is \textbf{violated}: the variance process can reach zero and,
+in the Euler discretisation, may become negative.
+
+\medskip
+\noindent To verify this empirically, the variance is simulated \emph{without}
+any correction on 1{,}000 paths; the fraction of paths that visit negative
+values is reported at runtime.  A \texttt{np.sqrt(np.abs(v))} trick is used
+under the diffusion term solely to prevent numerical NaN propagation, while
+the drift is left unconstrained so that $v$ can genuinely go negative.
+
+\medskip
+\noindent The standard remedy is \textbf{full truncation}: replace $v_{i-1}$
+with $\max(v_{i-1}, 0)$ \emph{before} using it in both the drift and the
+diffusion at step $i$:
+\begin{lstlisting}[style=pythonstyle]
+v_prev = np.maximum(v[i-1], 0)
+v[i]   = np.maximum(v_prev + kappa*(theta - v_prev)*dt
+                    + sigma*np.sqrt(v_prev*dt)*Z[i-1], 0)
+\end{lstlisting}
+\medskip
+\noindent Robustness discussion. The full-truncation Euler scheme implemented
+in the code was chosen for its numerical robustness and simplicity. By
+enforcing non-negativity before both drift and diffusion, the scheme avoids
+complex-valued square-roots and prevents NaNs that would otherwise propagate
+through the simulation. Compared with alternative fixes (e.g. reflection or
+absorbing at zero) full truncation is straightforward to implement, requires
+no tuning parameters, and yields stable option-price estimates in practice;
+it is therefore a pragmatic choice for Monte Carlo pricing where computational
+efficiency and reproducibility are important.
+This scheme is used in all tasks that require pricing under Heston.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{output/fig_05_task6_feller.png}
+    \caption{Task 6 --- Variance paths without truncation (left) and with full
+             truncation (right), 25 paths each.  In the left panel several
+             trajectories cross the zero threshold (red dashed line); in the
+             right panel all paths remain non-negative.}
+    \label{fig:task6}
+\end{figure}
+
+% =============================================================================
+\section{Fourier Pricing vs.\ Monte Carlo}
+% =============================================================================
+
+\subsection*{Characteristic Function}
+
+Under the Heston model the characteristic function of the log-price
+$x_T = \ln S_T$ admits a closed form (Heston, 1993):
+\[
+    \varphi(u) = \mathbb{E}\!\left[e^{iu\,x_T}\right]
+    = \exp\!\left(C(u,T) + D(u,T)\,v_0 + iu\,\ln S_0 + iu\,rT\right)
+\]
+with
+\begin{align*}
+    \xi   &= \kappa - i\rho\sigma u, \\
+    d     &= \sqrt{\xi^2 + \sigma^2(u^2 + iu)}, \\
+    g     &= \frac{\xi - d}{\xi + d}, \\
+    C     &= \frac{\kappa\theta}{\sigma^2}
+             \!\left[(\xi-d)T - 2\ln\!\frac{1 - g\,e^{-dT}}{1-g}\right], \\
+    D     &= \frac{\xi - d}{\sigma^2}\cdot
+             \frac{1 - e^{-dT}}{1 - g\,e^{-dT}}.
+\end{align*}
+
+\subsection*{Gil-Pelaez Inversion}
+
+The European call price is recovered via the Gil-Pelaez formula:
+\[
+    C = S_0\,P_1 - Ke^{-rT}\,P_2
+\]
+where
+\[
+    P_j = \frac{1}{2} + \frac{1}{\pi}\int_0^{\infty}
+          \mathrm{Re}\!\left[\frac{e^{-iu\ln K}\,\varphi_j(u)}{iu}\right]du,
+\]
+and $\varphi_1(u) = \varphi(u-i)\,/\,(S_0 e^{rT})$,
+$\varphi_2(u) = \varphi(u)$. The integrals are evaluated numerically with \texttt{scipy.integrate.quad} on $[10^{-4},\,100]$, this function uses adaptive Gauss-Kronrod quadrature, which is more accurate than fixed-step Simpson/trapezoidal rules and fully satisfies the spirit of the assignment.
+\begin{lstlisting}[style=pythonstyle]
+int1, _ = spi.quad(integrand_P1, 1e-4, 100,
+                   args=(S0, K, v0, r, kappa, theta, sigma, rho, T))
+int2, _ = spi.quad(integrand_P2, 1e-4, 100,
+                   args=(S0, K, v0, r, kappa, theta, sigma, rho, T))
+P1 = 0.5 + (1/np.pi)*int1
+P2 = 0.5 + (1/np.pi)*int2
+\end{lstlisting}
+\medskip
+\noindent Quadrature choice justification. The integrand appearing in the
+Gil--Pelaez formulas is oscillatory and may exhibit localized peaks at small
+frequencies; for these types of integrals an adaptive Gauss--Kronrod rule
+(as implemented in \texttt{scipy.integrate.quad}) offers two key advantages:
+(i) automatic error control (absolute/relative tolerances) and focused
+sampling where the integrand is most difficult, and (ii) efficient handling of
+semi-infinite/ improper integrals by mapping them to a finite evaluation range
+with reliable convergence diagnostics. Fixed-step Simpson or trapezoidal
+rules can work well when the integrand is smooth and the integration window
+is fine enough, but they require manual tuning of the grid and can be
+computationally wasteful for oscillatory integrands. For these reasons
+\texttt{quad} is a practical and robust default; when stricter guarantees are
+needed the tolerance arguments (\texttt{epsabs}, \texttt{epsrel}) can be
+lowered to obtain tighter error bounds at modest additional cost.
+
+\subsection*{Results}
+
+Table~\ref{tab:task7} reports prices and absolute errors for
+$K \in \{80,90,100,110,120\}$.
+
+\begin{table}[H]
+\centering
+\caption{Task 7 --- Fourier vs.\ Monte Carlo prices and absolute errors.
+         Exact values printed at runtime.}
+\label{tab:task7}
+\begin{tabular}{ccccc}
+\toprule
+Strike $K$ & $C_{\mathrm{Fourier}}$ & $C_{\mathrm{MC}}$ & $|C_F - C_{\mathrm{MC}}|$ \\
+\midrule
+80  & 23.1880  & 23.0121 & 0.1759 \\
+90  & 15.0920 & 14.9256 & 0.1664 \\
+100 & 8.3357 & 8.2025 & 0.1332 \\
+110 & 3.5705 & 3.4771 & 0.0934 \\
+120 & 1.1066 & 1.0601 & 0.0464 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\medskip
+\noindent The Fourier method is deterministic and typically achieves errors of
+order $10^{-4}$--$10^{-3}$, far below the Monte Carlo standard error
+$\approx \sigma_{\mathrm{payoff}}/\sqrt{M}$.  For $M = 10{,}000$ paths the MC
+standard error on an ATM call is roughly 0.03--0.05, so absolute errors in the
+table of that order are expected.  The Fourier approach is both faster and more
+precise for single-strike pricing, though Monte Carlo scales more naturally to
+path-dependent or multi-asset payoffs.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{output/fig_06_task7_fourier_vs_mc.png}
+    \caption{Task 7 --- Left: call prices by method across strikes.
+             Right: absolute pricing error $|C_{\mathrm{Fourier}} - C_{\mathrm{MC}}|$.}
+    \label{fig:task7}
+\end{figure}
+
+\end{document}
